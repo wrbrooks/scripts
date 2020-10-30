@@ -1,0 +1,101 @@
+#!/bin/bash
+
+if [ "$1" == "help" ]; then
+  echo "Usage: ./subtitle_sync input_file '[New File Name]' start_time end_time"
+  exit 0
+fi
+
+regex="^([0-9]+):([0-9]+):([0-9]+)[,.]([0-9]+)$"
+
+get_msecs() {
+	
+	if [[ $1 =~ $regex ]]
+	then
+		off_hrs="${BASH_REMATCH[1]}"
+		off_hrs=$(echo $off_hrs | sed 's/^0*//')
+		off_hrs=$((off_hrs * 3600000))
+		
+		off_mins="${BASH_REMATCH[2]}"
+		off_mins=$(echo $off_mins | sed 's/^0*//')
+		off_mins=$((off_mins * 60000))
+		
+		off_secs="${BASH_REMATCH[3]}"
+		off_secs=$(echo $off_secs | sed 's/^0*//')
+		off_secs=$((off_secs * 1000))
+		
+		off_msecs="${BASH_REMATCH[4]}"
+		off_msecs=$(echo $off_msecs | sed 's/^0*//')
+		
+		off_time=$((off_hrs + off_mins + off_secs + off_msecs))
+		echo $off_time
+	fi
+}
+
+get_timestamp() {
+	
+	time=$1
+	
+	off_hrs=$((time / 3600000))
+	time=$((time - off_hrs * 3600000))
+	
+	off_mins=$((time / 60000))
+	time=$((time - off_mins * 60000))
+	
+	off_secs=$((time / 1000))
+	time=$((time - off_secs * 1000 ))
+	
+	off_msecs=$time
+	
+	echo "$(printf "%02d" $off_hrs):$(printf "%02d" $off_mins):$(printf "%02d" $off_secs),$(printf "%03d" $off_msecs)"
+}
+
+time_start="$(get_msecs $3)"
+time_end="$(get_msecs $4)"
+
+full_regex="^([0-9]+:[0-9]+:[0-9]+[,.][0-9]+) --> ([0-9]+:[0-9]+:[0-9]+[,.][0-9]+)$"
+num_regex="^[0-9]+$"
+
+num=1
+add_line="false"
+
+file_out="$(tr -dc A-Za-z0-9 </dev/urandom | head -c 10).srt"
+
+tr -d '\r' < $1 | while read line
+do
+	if [[ $line =~ $num_regex ]]
+	then
+		continue
+	fi
+	
+	if [[ $line =~ $full_regex ]]
+	then
+		stamp_1="${BASH_REMATCH[1]}"
+		stamp_2="${BASH_REMATCH[2]}"
+		
+		time_1="$(get_msecs $stamp_1)"
+		time_2="$(get_msecs $stamp_2)"
+		
+		if [[ $time_1 -ge $time_start ]] && [[ $time_2 -le $time_end ]]
+		then
+		
+			new_time_1=$(($time_1 - $time_start))
+			new_time_2=$(($time_2 - $time_start))
+			
+			new_stamp_1="$(get_timestamp $new_time_1)"
+			new_stamp_2="$(get_timestamp $new_time_2)"
+		
+			echo $num
+			echo $line | sed "s/$stamp_1/$new_stamp_1/g" | sed "s/$stamp_2/$new_stamp_2/g"
+			((num++))
+			add_line="true"
+		else
+			add_line="false"
+		fi
+	else
+		if [[ $add_line == "true" ]]
+		then
+			echo $line
+		fi
+	fi
+done > $file_out
+mv $file_out "$2"
