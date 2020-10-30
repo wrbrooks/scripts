@@ -1,0 +1,23 @@
+#!/bin/bash
+
+if [ "$1" == "help" ]; then
+  echo "Usage: ./renumber input_file"
+  exit 0
+fi
+
+regex="^([0-9]+)$"
+
+file_out="$(tr -dc A-Za-z0-9 </dev/urandom | head -c 10).srt"
+
+num=1
+tr -d '\r' < $1 | while read line
+do	
+	if [[ $line =~ $regex ]]
+	then
+		echo $num
+		((num++))
+	else
+		echo $line
+	fi
+done > $file_out
+mv $file_out "$1"
